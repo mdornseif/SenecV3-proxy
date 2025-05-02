@@ -4,6 +4,22 @@ This are experiments to add a proxy to make accessing Senec devices to run on mi
 Candidates are an odroid m1s or an Teltonika RUTX08.
 It allowes embedded Devices, eg a Loxone Miniserver to access Data on Senec. 
 
+TL;DR: You dnon't have to `POST https://<IP-SENEC>/lala.cgi` but instead `GET http://router:8080/` to get something sane like this:
+
+```
+{
+  "ENERGYxGUI_BAT_DATA_POWER": -418.70001220703125,
+  "ENERGYxGUI_BAT_DATA_POWERkW": -0.41870001220703124,
+  "ENERGYxGUI_GRID_POW": -15.299999237060547,
+  "ENERGYxGUI_GRID_POWkW": -0.015299999237060546,
+  "ENERGYxGUI_HOUSE_POW": 403.4000244140625,
+  "ENERGYxGUI_HOUSE_POWkW": 0.4034000244140625,
+  "ENERGYxGUI_INVERTER_POWER": -0,
+  "ENERGYxGUI_INVERTER_POWERkW": -0,
+...
+}
+```
+
 ## RUTX08
 
 To build on MacOS install the toolchain:
