@@ -1,12 +1,10 @@
 # SenecV3-proxy
 
-This are experiments to add a proxy to make accessing Senec devices to run on minimal hardware.
-Candidates are an odroid m1s or an Teltonika RUTX08.
-It allowes embedded Devices, eg a Loxone Miniserver to access Data on Senec. 
+A proxy that makes accessing Senec home battery devices easy from minimal embedded hardware (e.g. a Teltonika RUTX08 router or an Odroid M1S).
 
-TL;DR: You dnon't have to `POST https://<IP-SENEC>/lala.cgi` but instead `GET http://router:8080/` to get something sane like this:
+Instead of posting raw requests to `POST https://<IP-SENEC>/lala.cgi`, clients can simply `GET http://router:8080/` and receive clean JSON:
 
-```
+```json
 {
   "ENERGYxGUI_BAT_DATA_POWER": -418.70001220703125,
   "ENERGYxGUI_BAT_DATA_POWERkW": -0.41870001220703124,
@@ -15,40 +13,85 @@ TL;DR: You dnon't have to `POST https://<IP-SENEC>/lala.cgi` but instead `GET ht
   "ENERGYxGUI_HOUSE_POW": 403.4000244140625,
   "ENERGYxGUI_HOUSE_POWkW": 0.4034000244140625,
   "ENERGYxGUI_INVERTER_POWER": -0,
-  "ENERGYxGUI_INVERTER_POWERkW": -0,
-...
+  "ENERGYxGUI_INVERTER_POWERkW": -0
 }
 ```
 
-## RUTX08
+## Deploying to a Teltonika RUTX08 (RutOS)
 
-To build on MacOS install the toolchain:
+### One-step deploy
+
+`deploy.sh` builds the binary, uploads it over SSH, installs the init script, and configures firmware-upgrade persistence automatically:
 
 ```sh
-GOOS=linux GOARCH=arm go build -ldflags="-s -w" -o ./senec_proxy-linux-arm ./senec_proxy.go
-upx --brute ./senec_proxy
+./deploy.sh root@192.168.1.1 192.168.18.24
+#            └─ router SSH    └─ SENEC device IP
 ```
 
-an init script in `/etc/init.d/senec_proxy` might look loke this assuming `192.168.18.24` is the IP of your Senec device:
+The script defaults to `GOARCH=mipsle` (MediaTek MT7621 in the RUTX08). Override with the `GOARCH` environment variable if your device uses a different architecture:
+
+```sh
+GOARCH=arm ./deploy.sh root@192.168.1.1 192.168.18.24
+```
+
+`upx` is used to compress the binary if it is installed — recommended but not required.
+
+### Surviving firmware upgrades
+
+RutOS wipes most of the filesystem on upgrade. The deploy script uses two mechanisms together to keep the proxy running after a firmware update:
+
+1. **`/lib/upgrade/keep.d/senec_proxy`** — lists the binary and init script so the sysupgrade tool preserves them. More reliable than `/etc/sysupgrade.conf`, which has known bugs in RutOS ≥ 07.00.
+
+2. **"Keep settings" in the WebUI** — when upgrading via *System → Firmware → Update Firmware*, enable the **Keep settings** checkbox. This preserves `/etc/` and `/usr/local/` and is required for the `keep.d` mechanism to be effective.
+
+> **Do not** rely solely on `/etc/sysupgrade.conf` — it is broken in RutOS firmware 07.00 and later.
+
+After a firmware upgrade, re-enable the service with:
+
+```sh
+ssh root@192.168.1.1 '/etc/init.d/senec_proxy enable && /etc/init.d/senec_proxy start'
+```
+
+Or simply re-run `deploy.sh`, which is idempotent.
+
+### Manual build (macOS)
+
+```sh
+# RUTX08 (MIPS)
+GOOS=linux GOARCH=mipsle go build -ldflags="-s -w" -o ./senec_proxy-linux-mipsle ./senec_proxy.go
+upx --brute ./senec_proxy-linux-mipsle
+
+# ARM devices (e.g. Odroid M1S)
+GOOS=linux GOARCH=arm go build -ldflags="-s -w" -o ./senec_proxy-linux-arm ./senec_proxy.go
+upx --brute ./senec_proxy-linux-arm
+```
+
+### Manual init script
+
+`/etc/init.d/senec_proxy`:
 
 ```sh
 #!/bin/sh /etc/rc.common
- 
+
 START=90
 STOP=01
 USE_PROCD=1
 
 start_service() {
-	procd_open_instance
-	procd_set_param command /usr/local/bin/senec_proxy 192.168.18.24 0.0.0.0
-        procd_set_param user nobody
-        procd_set_param stdout 0
-        procd_set_param stderr 0        
-        procd_set_param pidfile /var/run/senec_proxy.pid
-        procd_close_instance
+    procd_open_instance
+    procd_set_param command /usr/local/bin/senec_proxy 192.168.18.24 0.0.0.0
+    procd_set_param user nobody
+    procd_set_param stdout 0
+    procd_set_param stderr 0
+    procd_set_param pidfile /var/run/senec_proxy.pid
+    procd_close_instance
 }
 ```
 
-To use call `/etc/init.d/senec_proxy enable && /etc/init.d/senec_proxy start`
+Enable and start:
 
-There is also an experimental Rust version of the proxy.
+```sh
+/etc/init.d/senec_proxy enable && /etc/init.d/senec_proxy start
+```
+
+There is also an experimental Rust version of the proxy (`src/main.rs`).
