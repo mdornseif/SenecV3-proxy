@@ -2,6 +2,13 @@
 
 A proxy that makes accessing Senec home battery devices easy from minimal embedded hardware (e.g. a Teltonika RUTX08 router or an Odroid M1S).
 
+Two endpoints are available:
+
+| Endpoint | Description |
+|---|---|
+| `GET http://router:8080/` | All values as JSON |
+| `GET http://router:8080/metrics` | Prometheus-compatible gauge metrics |
+
 Instead of posting raw requests to `POST https://<IP-SENEC>/lala.cgi`, clients can simply `GET http://router:8080/` and receive clean JSON:
 
 ```json
@@ -15,6 +22,19 @@ Instead of posting raw requests to `POST https://<IP-SENEC>/lala.cgi`, clients c
   "ENERGYxGUI_INVERTER_POWER": -0,
   "ENERGYxGUI_INVERTER_POWERkW": -0
 }
+```
+
+`/metrics` exposes the same data as Prometheus gauges (SENEC namespace separators are mapped to `_`):
+
+```
+# TYPE senec_energy_gui_bat_data_power gauge
+senec_energy_gui_bat_data_power 391.56
+# TYPE senec_energy_gui_bat_data_powerkw gauge
+senec_energy_gui_bat_data_powerkw 0.39156
+# TYPE senec_energy_gui_grid_pow gauge
+senec_energy_gui_grid_pow 2959.47
+# TYPE senec_energy_gui_house_pow gauge
+senec_energy_gui_house_pow 2970.36
 ```
 
 ## Deploying to a Teltonika RUTX08 (RutOS)

@@ -53,6 +53,9 @@ start_service() {
 EOF
 
 # ── Upload ─────────────────────────────────────────────────────────────────────
+echo "==> Stopping service (if running) before replacing binary..."
+ssh "${ROUTER_HOST}" '/etc/init.d/senec_proxy stop 2>/dev/null; sleep 1; true'
+
 echo "==> Uploading to ${ROUTER_HOST}..."
 scp "${WORK_DIR}/senec_proxy"      "${ROUTER_HOST}:${REMOTE_BINARY}"
 scp "${WORK_DIR}/senec_proxy.init" "${ROUTER_HOST}:/etc/init.d/senec_proxy"

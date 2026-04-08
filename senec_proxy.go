@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -481,6 +482,63 @@ func (s *SenecClient) decodeString(hexStr string) (string, error) {
 	return string(bytes[:end]), nil
 }
 
+// toMetricName converts a flattened SENEC key to a Prometheus metric name.
+// The flatten function joins namespaces with 'x', so ENERGYxGUI_BAT_DATA_POWER
+// becomes senec_energy_gui_bat_data_power.
+func toMetricName(key string) string {
+	return "senec_" + strings.ToLower(strings.ReplaceAll(key, "x", "_"))
+}
+
+// toFloat64 converts any numeric type returned by the SENEC decoder to float64.
+// Returns false for strings and other non-numeric values.
+func toFloat64(v interface{}) (float64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case float32:
+		return float64(val), true
+	case int8:
+		return float64(val), true
+	case int16:
+		return float64(val), true
+	case int32:
+		return float64(val), true
+	case uint8:
+		return float64(val), true
+	case uint16:
+		return float64(val), true
+	case uint32:
+		return float64(val), true
+	default:
+		return 0, false
+	}
+}
+
+// handleMetrics serves a Prometheus-compatible /metrics endpoint.
+func handleMetrics(w http.ResponseWriter, r *http.Request, client *SenecClient) {
+	data, err := client.GetData()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error retrieving SENEC data: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	keys := make([]string, 0, len(data))
+	for k := range data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	for _, key := range keys {
+		f, ok := toFloat64(data[key])
+		if !ok {
+			continue
+		}
+		name := toMetricName(key)
+		fmt.Fprintf(w, "# TYPE %s gauge\n%s %g\n", name, name, f)
+	}
+}
+
 // HTTP server handler
 func handleRequest(w http.ResponseWriter, r *http.Request, client *SenecClient) {
 	// Get data from SENEC system (with caching)
@@ -530,11 +588,16 @@ func main() {
 	client := NewSenecClient(senecIP)
 
 	// Create server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		handleMetrics(w, r, client)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		handleRequest(w, r, client)
+	})
 	server := &http.Server{
-		Addr: fmt.Sprintf("%s:%d", serverIP, serverPort),
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			handleRequest(w, r, client)
-		}),
+		Addr:    fmt.Sprintf("%s:%d", serverIP, serverPort),
+		Handler: mux,
 	}
 
 	// Start server in a goroutine
