@@ -24,17 +24,32 @@ Instead of posting raw requests to `POST https://<IP-SENEC>/lala.cgi`, clients c
 `deploy.sh` builds the binary, uploads it over SSH, installs the init script, and configures firmware-upgrade persistence automatically:
 
 ```sh
-./deploy.sh root@192.168.1.1 192.168.18.24
+./deploy.sh root@192.168.18.1 192.168.18.24
 #            └─ router SSH    └─ SENEC device IP
 ```
 
-The script defaults to `GOARCH=mipsle` (MediaTek MT7621 in the RUTX08). Override with the `GOARCH` environment variable if your device uses a different architecture:
+The script defaults to `GOARCH=arm GOARM=7` (ARMv7 in the RUTX08). Override with the `GOARCH` environment variable if your device uses a different architecture:
 
 ```sh
-GOARCH=arm ./deploy.sh root@192.168.1.1 192.168.18.24
+GOARCH=mipsle ./deploy.sh root@192.168.18.1 192.168.18.24
 ```
 
 `upx` is used to compress the binary if it is installed — recommended but not required.
+
+The script ends by curling `http://localhost:8080/` on the device and checking the response contains expected SENEC JSON keys. It exits with an error and prints diagnostic commands if the proxy doesn't respond within 10 seconds.
+
+To verify manually after deployment:
+
+```sh
+curl -s http://192.168.18.1:8080/ | python3 -m json.tool | head -20
+```
+
+To check service status or logs:
+
+```sh
+ssh root@192.168.18.1 '/etc/init.d/senec_proxy status'
+ssh root@192.168.18.1 'logread | grep senec'
+```
 
 ### Surviving firmware upgrades
 
@@ -57,13 +72,13 @@ Or simply re-run `deploy.sh`, which is idempotent.
 ### Manual build (macOS)
 
 ```sh
-# RUTX08 (MIPS)
+# RUTX08 / Odroid M1S (ARMv7)
+GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o ./senec_proxy-linux-arm ./senec_proxy.go
+upx --brute ./senec_proxy-linux-arm
+
+# MIPS devices
 GOOS=linux GOARCH=mipsle go build -ldflags="-s -w" -o ./senec_proxy-linux-mipsle ./senec_proxy.go
 upx --brute ./senec_proxy-linux-mipsle
-
-# ARM devices (e.g. Odroid M1S)
-GOOS=linux GOARCH=arm go build -ldflags="-s -w" -o ./senec_proxy-linux-arm ./senec_proxy.go
-upx --brute ./senec_proxy-linux-arm
 ```
 
 ### Manual init script
